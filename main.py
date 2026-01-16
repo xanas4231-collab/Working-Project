@@ -299,15 +299,46 @@ def scan_files(paths: List[str], ignore_paths: List[str] = None, ignore_exts: Li
                 
                 # Write to sheet
                 try:
-                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    target_sheet_name = sheet_name
+                    if sheets_written > 0 and sheet_name in writer.sheets:
+                         # This check inside loop is tricky because writer.sheets updates.
+                         # But our fallback logic above handles unique names usually?
+                         # Let's rely on try/except for duplicates or just use the counter if we failed before.
+                         pass
+
+                    try:
+                        df.to_excel(writer, sheet_name=target_sheet_name, index=False)
+                    except ValueError:
+                         # fallback if duplicate
+                         target_sheet_name = f"{sheet_name}_{sheets_written}"
+                         df.to_excel(writer, sheet_name=target_sheet_name, index=False)
+                    
+                    # --- Conditional Formatting ---
+                    # Access the workbook and sheet
+                    workbook = writer.book
+                    worksheet = writer.sheets[target_sheet_name]
+                    
+                    from openpyxl.styles import PatternFill
+                    red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+                    
+                    # Keywords to check (case-insensitive)
+                    keywords = ["att", "attachment", "attatchment"]
+                    
+                    # Iterate over all rows and columns (or just specific columns?)
+                    # User said "file name", which corresponds to "File Name" (Col A) and "All File Names" (Col E) usually.
+                    # But grouping changes things. Let's color ANY cell that matches to be safe and thorough.
+                    for row in worksheet.iter_rows(min_row=2): # Skip header
+                        for cell in row:
+                            if cell.value and isinstance(cell.value, str):
+                                cell_lower = cell.value.lower()
+                                if any(kw in cell_lower for kw in keywords):
+                                    cell.fill = red_fill
+                    # -----------------------------
+
                     sheets_written += 1
-                    print(f"  Written sheet: {sheet_name}")
-                except ValueError:
-                    # Handle duplicate sheet names (unlikely with grouping logic, but safe to keep)
-                    final_sheet_name = f"{sheet_name}_{sheets_written}"
-                    df.to_excel(writer, sheet_name=final_sheet_name, index=False)
-                    sheets_written += 1
-                    print(f"  Written sheet: {final_sheet_name}")
+                    print(f"  Written sheet: {target_sheet_name}")
+                except Exception as e:
+                     print(f"  Error writing sheet '{sheet_name}': {e}")
             
             print("-" * 40)
             if sheets_written > 0:
