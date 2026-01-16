@@ -324,10 +324,9 @@ def scan_files(paths: List[str], ignore_paths: List[str] = None, ignore_exts: Li
                     # Keywords to check (case-insensitive)
                     keywords = ["att", "attachment", "attatchment"]
                     
-                    # Iterate over all rows and columns (or just specific columns?)
-                    # User said "file name", which corresponds to "File Name" (Col A) and "All File Names" (Col E) usually.
-                    # But grouping changes things. Let's color ANY cell that matches to be safe and thorough.
-                    for row in worksheet.iter_rows(min_row=2): # Skip header
+                    # Iterate over the "File Name" column (Column A, which is col 1)
+                    # min_col=1, max_col=1 ensures we only look at the first column
+                    for row in worksheet.iter_rows(min_row=2, min_col=1, max_col=1): 
                         for cell in row:
                             if cell.value and isinstance(cell.value, str):
                                 cell_lower = cell.value.lower()
