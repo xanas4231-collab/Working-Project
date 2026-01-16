@@ -181,73 +181,93 @@ def scan_files(paths: List[str], ignore_paths: List[str] = None, ignore_exts: Li
         with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
             sheets_written = 0
             
+            # 1. Group paths by sheet_name
+            from collections import OrderedDict
+            sheet_groups = OrderedDict()
+            
             for i, target_path in enumerate(paths):
                 # Skip empty paths
                 if not target_path or not target_path.strip():
-                    print(f"Skipping empty path at index {i}")
-                    continue
-                
-                print(f"Processing path: {target_path}")
-                
-                # Get sheet name for this path
-                if i < len(sheet_names):
-                    sheet_name = sheet_names[i]
-                else:
-                    # Fallback to path basename if no sheet name provided
-                    if target_path == ".":
-                        sheet_name = "Root"
-                    else:
-                        sheet_name = os.path.basename(os.path.abspath(target_path))
-                        if not sheet_name:
-                            sheet_name = "Root"
-                
-                # Limit sheet name to 31 characters (Excel limit)
-                sheet_name = sheet_name[:31]
-                
-                all_collected_files = []
-                target_path_abs = os.path.abspath(target_path)
-                
-                if not os.path.exists(target_path_abs):
-                    print(f"  Warning: Path '{target_path_abs}' does not exist. Skipping.")
                     continue
                     
-                if os.path.isfile(target_path_abs):
-                    name = os.path.basename(target_path_abs)
-                    if not should_ignore(target_path_abs, name, ign_paths_set, ign_exts_set, ign_names_set, ignore_hidden, allowed_exts_set):
-                        try:
-                            rel_p = os.path.relpath(target_path_abs)
-                        except ValueError:
-                            rel_p = target_path_abs
-                        mod_time = get_mod_time(target_path_abs)
-                        all_collected_files.append((rel_p, mod_time))
+                # Determine sheet name
+                if i < len(sheet_names):
+                    s_name = sheet_names[i]
                 else:
-                    for root, dirs, files in os.walk(target_path_abs):
-                        dirs_to_remove = []
-                        for d in dirs:
-                            full_dir_path = os.path.join(root, d)
-                            if should_ignore(full_dir_path, d, ign_paths_set, ign_exts_set, ign_names_set, ignore_hidden, allowed_exts=None): 
-                                 dirs_to_remove.append(d)
+                    # Fallback logic
+                    if target_path == ".":
+                        s_name = "Root"
+                    else:
+                        s_name = os.path.basename(os.path.abspath(target_path))
+                        if not s_name:
+                            s_name = "Root"
                             
-                        for d in dirs_to_remove:
-                            dirs.remove(d)
+                # Limit sheet name to 31 characters
+                s_name = s_name[:31]
+                
+                if s_name not in sheet_groups:
+                    sheet_groups[s_name] = []
+                sheet_groups[s_name].append(target_path)
 
-                        for file in files:
-                            full_path = os.path.join(root, file)
-                            
-                            if should_ignore(full_path, file, ign_paths_set, ign_exts_set, ign_names_set, ignore_hidden, allowed_exts_set):
-                                continue
-                                
+            # 2. Process each Group (Sheet)
+            for sheet_name, group_paths in sheet_groups.items():
+                print(f"Processing Sheet: '{sheet_name}' with {len(group_paths)} path(s)")
+                
+                all_collected_files_for_sheet = []
+                
+                for target_path in group_paths:
+                    print(f"  Scanning path: {target_path}")
+                    target_path_abs = os.path.abspath(target_path)
+                    
+                    if not os.path.exists(target_path_abs):
+                        print(f"    Warning: Path '{target_path_abs}' does not exist. Skipping.")
+                        continue
+                        
+                    # Collect files from this specific path
+                    current_path_files = []
+                    if os.path.isfile(target_path_abs):
+                        name = os.path.basename(target_path_abs)
+                        if not should_ignore(target_path_abs, name, ign_paths_set, ign_exts_set, ign_names_set, ignore_hidden, allowed_exts_set):
                             try:
-                                rel_path = os.path.relpath(full_path)
+                                rel_p = os.path.relpath(target_path_abs)
                             except ValueError:
-                                rel_path = full_path
-                            
-                            mod_time = get_mod_time(full_path)
-                            all_collected_files.append((rel_path, mod_time))
+                                rel_p = target_path_abs
+                            mod_time = get_mod_time(target_path_abs)
+                            current_path_files.append((rel_p, mod_time))
+                    else:
+                        for root, dirs, files in os.walk(target_path_abs):
+                            dirs_to_remove = []
+                            for d in dirs:
+                                full_dir_path = os.path.join(root, d)
+                                if should_ignore(full_dir_path, d, ign_paths_set, ign_exts_set, ign_names_set, ignore_hidden, allowed_exts=None): 
+                                     dirs_to_remove.append(d)
+                                
+                            for d in dirs_to_remove:
+                                dirs.remove(d)
 
-                # Group files for this path
-                print(f"  Found {len(all_collected_files)} files. Grouping...")
-                grouped_files = group_files(all_collected_files, threshold=80)
+                            for file in files:
+                                full_path = os.path.join(root, file)
+                                
+                                if should_ignore(full_path, file, ign_paths_set, ign_exts_set, ign_names_set, ignore_hidden, allowed_exts_set):
+                                    continue
+                                    
+                                try:
+                                    rel_path = os.path.relpath(full_path)
+                                except ValueError:
+                                    rel_path = full_path
+                                
+                                mod_time = get_mod_time(full_path)
+                                current_path_files.append((rel_path, mod_time))
+                    
+                    all_collected_files_for_sheet.extend(current_path_files)
+
+                # Group files for this ENTIRE sheet (across all paths)
+                if not all_collected_files_for_sheet:
+                    print(f"  No valid files found for sheet '{sheet_name}'. Skipping.")
+                    continue
+
+                print(f"  Found {len(all_collected_files_for_sheet)} total files for sheet '{sheet_name}'. Grouping...")
+                grouped_files = group_files(all_collected_files_for_sheet, threshold=80)
                 
                 # Create DataFrame for this sheet
                 data = []
@@ -283,8 +303,8 @@ def scan_files(paths: List[str], ignore_paths: List[str] = None, ignore_exts: Li
                     sheets_written += 1
                     print(f"  Written sheet: {sheet_name}")
                 except ValueError:
-                    # Handle duplicate sheet names
-                    final_sheet_name = f"{sheet_name}_{i}"
+                    # Handle duplicate sheet names (unlikely with grouping logic, but safe to keep)
+                    final_sheet_name = f"{sheet_name}_{sheets_written}"
                     df.to_excel(writer, sheet_name=final_sheet_name, index=False)
                     sheets_written += 1
                     print(f"  Written sheet: {final_sheet_name}")
@@ -345,14 +365,13 @@ def parse_scan_paths_file(file_path: str) -> Tuple[List[str], List[str]]:
             
             if line.startswith('#'):
                 # This is a department name
-                # Reset any previous department that didn't have a path
                 current_dept = line[1:].strip()  # Remove the '#' and whitespace
             elif current_dept:
                 # This is a path for the current department
                 if line:  # Only add non-empty paths
                     paths.append(line)
                     sheet_names.append(current_dept)
-                    current_dept = None  # Reset for next department
+                    # current_dept is NOT reset, allowing multiple paths under one header
             else:
                 # Path without a department name - use path basename as sheet name
                 if line:
@@ -599,4 +618,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-print("sync teHREHERHWRHstRHH from anRERERtigravity")
+
