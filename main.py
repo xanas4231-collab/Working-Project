@@ -327,9 +327,9 @@ def scan_files(paths: List[str], ignore_paths: List[str] = None, ignore_exts: Li
                     # Iterate over the "File Name" column (Column A, which is col 1)
                     # min_col=1, max_col=1 ensures we only look at the first column
                     import re
-                    # Regex pattern for whole words (att, attachment, attatchment)
+                    # Regex pattern for whole words (att, attachment, attatchment, draft)
                     # \b matches word boundaries
-                    pattern = re.compile(r'\b(att|attachment|attatchment)\b', re.IGNORECASE)
+                    pattern = re.compile(r'\b(att|attachment|attatchment|draft)\b', re.IGNORECASE)
                     
                     for row in worksheet.iter_rows(min_row=2, min_col=1, max_col=1): 
                         for cell in row:
